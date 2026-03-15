@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Lecturer Attendance Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; padding: 50px; background: #f4f4f9; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); text-align: center; width: 400px; }
+        select, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ccc; font-size: 16px; }
+        button { background: #003366; color: white; cursor: pointer; font-weight: bold; border: none; }
+        #qr-reader { margin-top: 20px; min-height: 250px; display: flex; justify-content: center; align-items: center; border: 2px dashed #bbb; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Start Class Session</h2>
+    
+    <select id="course-select">
+        <option value="CS401 - Artificial Intelligence">CS401 - Artificial Intelligence</option>
+        <option value="CS402 - Software Engineering">CS402 - Software Engineering</option>
+        <option value="CS405 - Data Science">CS405 - Data Science</option>
+    </select>
+
+    <button onclick="initiateSession()">Project QR Code</button>
+<p id="timer" style="color: #d9534f; font-weight: bold; margin-top: 10px;"></p>
+    <div id="qr-reader">
+        <p style="color: #888;">QR Code will appear here</p>
+    </div>
+    <p id="status" style="margin-top: 15px; color: #003366; font-weight: bold;"></p>
+</div>
+
+
+
+<script>
+
+     // ADD THESE THREE LINES HERE:
+    let countdownInterval = null;
+    let qrCodeObj = null;
+    let currentSessionId = null;
+
+        // ... the rest of your code ...
+    async function initiateSession() {
+        const statusMsg = document.getElementById('status');
+        const qrBox = document.getElementById("qr-reader");
+        const courseSelect = document.getElementById('course-select');
+
+        // 1. Clean the code (Takes "CS401 - AI" and makes it just "CS401")
+        const courseCode = courseSelect.value.split(' ')[0]; 
+        
+        statusMsg.innerHTML = "Connecting to server...";
+        qrBox.innerHTML = "Working...";
+
+        try {
+            // 2. The Fetch Request
+            const response = await fetch('http://127.0.0.1:5000/api/start_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ course_code: courseCode })
+            });
+
+            const data = await response.json();
+
+            if (data.status === "success") {
+                // 3. Clear the box and generate the QR
+                qrBox.innerHTML = ""; 
+                new QRCode(qrBox, {
+                    text: data.current_token,
+                    width: 250,
+                    height: 250
+                });
+                startRefreshCycle();
+                statusMsg.innerHTML = "✅ Session Started: " + courseCode;
+                console.log("Token received:", data.current_token);
+            } else {
+                statusMsg.innerHTML = "❌ Error: " + data.message;
+                qrBox.innerHTML = "Try again";
+            }
+        } catch (error) {
+            console.error("Connection error:", error);
+            statusMsg.innerHTML = "❌ Cannot connect. Is app.py running?";
+            qrBox.innerHTML = "No Server Found";
+        }
+    }
+    function startRefreshCycle() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    let timeLeft = 60; // 1 minutes
+
+    countdownInterval = setInterval(() => {
+        timeLeft--;
+        const timerElement = document.getElementById('timer');
+        if (timerElement) {
+            let mins = Math.floor(timeLeft / 60);
+            let secs = timeLeft % 60;
+            timerElement.innerHTML = `Next refresh in: ${mins}:${secs < 1 ? '0' : ''}${secs}`;
+        }
+
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+            initiateSession(); // Automatically gets a new code
+        }
+    }, 1000);
+}
+</script>
+
+</body>
+</html>

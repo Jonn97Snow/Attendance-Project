@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attendance Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4f7f6;
+        }
+        h2 {
+            color: #333;
+            text-align: center;
+        }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background: white;
+        }
+        #status-message {
+            margin-top: 20px;
+            padding: 15px;
+            width: 100%;
+            max-width: 470px;
+            text-align: center;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none; /* Hidden until a scan happens */
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+
+    <h2>Scan Class QR Code</h2>
+    
+    <div id="reader"></div>
+    
+    <div id="status-message"></div>
+
+    <script>
+        // Mock Student ID for testing. 
+        // In the real app, the student would log in, and this would be pulled from their session.
+        const loggedInStudentID = "10998877"; 
+
+        // 1. Initialize the Scanner
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { fps: 10, qrbox: {width: 250, height: 250} }, 
+            /* verbose= */ false
+        );
+
+        // 2. What happens when a QR code is successfully detected
+        function onScanSuccess(decodedText, decodedResult) {
+            // Stop scanning to prevent multiple rapid-fire submissions
+            html5QrcodeScanner.pause(); 
+
+            // The decoded text from our Python script looks like: "session:101|token:abc123xyz"
+            // We need to split it to get the raw data
+            try {
+                const parts = decodedText.split('|');
+                const sessionPart = parts[0].split(':')[1];
+                const tokenPart = parts[1].split(':')[1];
+
+                // 3. Send the data to the Flask API
+                submitAttendance(sessionPart, tokenPart);
+            } catch (err) {
+                showStatus("Invalid QR Code format.", "error");
+                setTimeout(() => html5QrcodeScanner.resume(), 3000); // Resume scanning after 3 seconds
+            }
+        }
+
+        // What happens if scanning fails (usually just ignores it until a code is found)
+        function onScanFailure(error) {
+            // handle scan failure, usually better to ignore and keep scanning
+        }
+
+        // Start the camera
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+        // --- API Communication Logic ---
+        function submitAttendance(sessionId, token) {
+            showStatus("Verifying...", ""); // Clear previous messages
+
+            // Important: Replace this URL with your actual Flask server IP when testing on mobile
+            // Example: "http://192.168.1.X:5000/api/scan_qr"
+            fetch('http://localhost:5000/api/scan_qr', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    student_id: loggedInStudentID,
+                    session_id: sessionId,
+                    token: token
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.status === "success") {
+                    showStatus("✅ " + data.message, "success");
+                    // Optionally, redirect to a success page here
+                } else {
+                    showStatus("❌ " + data.message, "error");
+                    // If it failed (expired), resume the camera so they can try again
+                    setTimeout(() => html5QrcodeScanner.resume(), 3000);
+                }
+            })
+            .catch((error) => {
+                showStatus("Network error. Please try again.", "error");
+                setTimeout(() => html5QrcodeScanner.resume(), 3000);
+            });
+        }
+
+        // Helper function to update the UI
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.style.display = 'block';
+            statusDiv.className = type; // Applies the .success or .error CSS
+            statusDiv.innerText = message;
+        }
+    </script>
+</body>
+</html>
